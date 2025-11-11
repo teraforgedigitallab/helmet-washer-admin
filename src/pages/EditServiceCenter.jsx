@@ -3,13 +3,16 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
-import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle, FiNavigation } from 'react-icons/fi';
 
 const EditServiceCenter = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [map, setMap] = useState(null);
+  const [marker, setMarker] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -18,6 +21,10 @@ const EditServiceCenter = () => {
     distance: '',
     status: 'Open',
     phone: '',
+    coordinates: {
+      latitude: 19.0760,
+      longitude: 72.8777
+    },
     operatingHours: {
       weekday: '9:00 AM - 8:00 PM',
       saturday: '9:00 AM - 9:00 PM',
@@ -34,14 +41,35 @@ const EditServiceCenter = () => {
     'Maintenance Service'
   ];
 
+  // Load Google Maps API
+  useEffect(() => {
+    if (!window.google) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setMapLoaded(true);
+      document.head.appendChild(script);
+    } else {
+      setMapLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
     fetchServiceCenter();
   }, [id]);
 
+  // Initialize map after data is loaded
+  useEffect(() => {
+    if (mapLoaded && !fetching && !map && formData.coordinates) {
+      initializeMap();
+    }
+  }, [mapLoaded, fetching, formData.coordinates]);
+
   const fetchServiceCenter = async () => {
     try {
       setFetching(true);
-      const docRef = doc(db, 'serviceCenters', id);
+      const docRef = doc(db, 'ServiceCenters', id);
       const docSnap = await getDoc(docRef);
       
       if (docSnap.exists()) {
@@ -54,6 +82,10 @@ const EditServiceCenter = () => {
           distance: data.distance || '',
           status: data.status || 'Open',
           phone: data.phone || '',
+          coordinates: data.coordinates || {
+            latitude: 19.0760,
+            longitude: 72.8777
+          },
           operatingHours: data.operatingHours || {
             weekday: '9:00 AM - 8:00 PM',
             saturday: '9:00 AM - 9:00 PM',
@@ -70,6 +102,138 @@ const EditServiceCenter = () => {
       toast.error('Failed to fetch service center details');
     } finally {
       setFetching(false);
+    }
+  };
+
+  const initializeMap = () => {
+    const mapInstance = new window.google.maps.Map(document.getElementById('map'), {
+      center: { 
+        lat: formData.coordinates.latitude, 
+        lng: formData.coordinates.longitude 
+      },
+      zoom: 15,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+
+    const markerInstance = new window.google.maps.Marker({
+      position: { 
+        lat: formData.coordinates.latitude, 
+        lng: formData.coordinates.longitude 
+      },
+      map: mapInstance,
+      draggable: true,
+      animation: window.google.maps.Animation.DROP,
+    });
+
+    // Update coordinates when marker is dragged
+    markerInstance.addListener('dragend', (event) => {
+      const lat = event.latLng.lat();
+      const lng = event.latLng.lng();
+      setFormData(prev => ({
+        ...prev,
+        coordinates: {
+          latitude: lat,
+          longitude: lng
+        }
+      }));
+      reverseGeocode(lat, lng);
+    });
+
+    // Click on map to move marker
+    mapInstance.addListener('click', (event) => {
+      const lat = event.latLng.lat();
+      const lng = event.latLng.lng();
+      markerInstance.setPosition({ lat, lng });
+      setFormData(prev => ({
+        ...prev,
+        coordinates: {
+          latitude: lat,
+          longitude: lng
+        }
+      }));
+      reverseGeocode(lat, lng);
+    });
+
+    // Add search box
+    const input = document.getElementById('location-search');
+    if (input) {
+      const searchBox = new window.google.maps.places.SearchBox(input);
+      
+      mapInstance.addListener('bounds_changed', () => {
+        searchBox.setBounds(mapInstance.getBounds());
+      });
+
+      searchBox.addListener('places_changed', () => {
+        const places = searchBox.getPlaces();
+        if (places.length === 0) return;
+
+        const place = places[0];
+        if (!place.geometry || !place.geometry.location) return;
+
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+
+        mapInstance.setCenter({ lat, lng });
+        mapInstance.setZoom(15);
+        markerInstance.setPosition({ lat, lng });
+
+        setFormData(prev => ({
+          ...prev,
+          address: place.formatted_address || '',
+          coordinates: {
+            latitude: lat,
+            longitude: lng
+          }
+        }));
+      });
+    }
+
+    setMap(mapInstance);
+    setMarker(markerInstance);
+  };
+
+  const reverseGeocode = async (lat, lng) => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        setFormData(prev => ({
+          ...prev,
+          address: results[0].formatted_address
+        }));
+      }
+    });
+  };
+
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          if (map && marker) {
+            map.setCenter({ lat, lng });
+            map.setZoom(15);
+            marker.setPosition({ lat, lng });
+            
+            setFormData(prev => ({
+              ...prev,
+              coordinates: {
+                latitude: lat,
+                longitude: lng
+              }
+            }));
+            reverseGeocode(lat, lng);
+          }
+        },
+        (error) => {
+          toast.error('Unable to get your location');
+        }
+      );
+    } else {
+      toast.error('Geolocation is not supported by your browser');
     }
   };
 
@@ -123,7 +287,7 @@ const EditServiceCenter = () => {
         updatedAt: new Date().toISOString()
       };
 
-      await updateDoc(doc(db, 'serviceCenters', id), docData);
+      await updateDoc(doc(db, 'ServiceCenters', id), docData);
       toast.success('Service center updated successfully!');
       navigate('/service-centers');
     } catch (error) {
@@ -170,6 +334,114 @@ const EditServiceCenter = () => {
         {/* Form Container */}
         <div className="max-w-4xl">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Map Section */}
+            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
+                <div className="p-2.5 bg-blue-50 rounded-xl">
+                  <FiMapPin className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-gray-900">Location & Map</h3>
+                  <p className="text-sm text-gray-600">Adjust the location pin on the map</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-600 rounded-xl hover:bg-primary-100 transition-colors"
+                >
+                  <FiNavigation className="w-4 h-4" />
+                  <span className="text-sm font-medium">Use Current</span>
+                </button>
+              </div>
+
+              {/* Location Search */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Search Location
+                </label>
+                <div className="relative">
+                  <FiMapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    id="location-search"
+                    type="text"
+                    placeholder="Search for a location..."
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
+                  />
+                </div>
+              </div>
+
+              {/* Map Container */}
+              <div className="relative">
+                <div 
+                  id="map" 
+                  className="w-full h-96 rounded-xl overflow-hidden border border-gray-200"
+                  style={{ minHeight: '384px' }}
+                ></div>
+                {!mapLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-xl">
+                    <div className="text-center">
+                      <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className="text-sm text-gray-600">Loading map...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Coordinates Display */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.coordinates.latitude}
+                    readOnly
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 font-mono text-sm"
+                    step="any"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.coordinates.longitude}
+                    readOnly
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 font-mono text-sm"
+                    step="any"
+                  />
+                </div>
+              </div>
+
+              {/* View on Google Maps */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                    <FiMapPin className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-semibold text-blue-900 mb-1">Preview Location</h4>
+                    <p className="text-xs text-blue-700 mb-3">
+                      View this location on Google Maps to verify the exact address
+                    </p>
+                    <a
+                      href={`https://www.google.com/maps?q=${formData.coordinates.latitude},${formData.coordinates.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      Open in Google Maps
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Basic Information Section */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
               <div className="flex items-center gap-3 pb-4 border-b border-gray-200">

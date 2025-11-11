@@ -18,7 +18,7 @@ const ServiceCenters = () => {
   const fetchServiceCenters = async () => {
     try {
       setLoading(true);
-      const querySnapshot = await getDocs(collection(db, 'serviceCenters'));
+      const querySnapshot = await getDocs(collection(db, 'ServiceCenters'));
       const centers = [];
       querySnapshot.forEach((doc) => {
         centers.push({ id: doc.id, ...doc.data() });
@@ -35,7 +35,7 @@ const ServiceCenters = () => {
   const handleDelete = async (id, name) => {
     if (window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
       try {
-        await deleteDoc(doc(db, 'serviceCenters', id));
+        await deleteDoc(doc(db, 'ServiceCenters', id));
         setServiceCenters(serviceCenters.filter(center => center.id !== id));
         toast.success('Service center deleted successfully');
       } catch (error) {
@@ -46,8 +46,8 @@ const ServiceCenters = () => {
   };
 
   const filteredCenters = serviceCenters.filter(center => {
-    const matchesSearch = center.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         center.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = center.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         center.address?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || center.status === filterStatus;
     return matchesSearch && matchesFilter;
   });

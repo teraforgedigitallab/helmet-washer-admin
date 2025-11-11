@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
-import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle, FiNavigation } from 'react-icons/fi';
 
 const AddServiceCenter = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [map, setMap] = useState(null);
+  const [marker, setMarker] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -16,6 +19,10 @@ const AddServiceCenter = () => {
     distance: '',
     status: 'Open',
     phone: '',
+    coordinates: {
+      latitude: 19.0760,
+      longitude: 72.8777
+    },
     operatingHours: {
       weekday: '9:00 AM - 8:00 PM',
       saturday: '9:00 AM - 9:00 PM',
@@ -31,6 +38,151 @@ const AddServiceCenter = () => {
     'Helmet Repair',
     'Maintenance Service'
   ];
+
+  // Load Google Maps API
+  useEffect(() => {
+    if (!window.google) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyC52Cer5Yu8ZdD0IHh2s3YsMPpXJiyvVdY&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setMapLoaded(true);
+      document.head.appendChild(script);
+    } else {
+      setMapLoaded(true);
+    }
+  }, []);
+
+  // Initialize map when loaded
+  useEffect(() => {
+    if (mapLoaded && !map) {
+      initializeMap();
+    }
+  }, [mapLoaded]);
+
+  const initializeMap = () => {
+    const mapInstance = new window.google.maps.Map(document.getElementById('map'), {
+      center: { lat: formData.coordinates.latitude, lng: formData.coordinates.longitude },
+      zoom: 13,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+
+    const markerInstance = new window.google.maps.Marker({
+      position: { lat: formData.coordinates.latitude, lng: formData.coordinates.longitude },
+      map: mapInstance,
+      draggable: true,
+      animation: window.google.maps.Animation.DROP,
+    });
+
+    // Update coordinates when marker is dragged
+    markerInstance.addListener('dragend', (event) => {
+      const lat = event.latLng.lat();
+      const lng = event.latLng.lng();
+      setFormData(prev => ({
+        ...prev,
+        coordinates: {
+          latitude: lat,
+          longitude: lng
+        }
+      }));
+      reverseGeocode(lat, lng);
+    });
+
+    // Click on map to move marker
+    mapInstance.addListener('click', (event) => {
+      const lat = event.latLng.lat();
+      const lng = event.latLng.lng();
+      markerInstance.setPosition({ lat, lng });
+      setFormData(prev => ({
+        ...prev,
+        coordinates: {
+          latitude: lat,
+          longitude: lng
+        }
+      }));
+      reverseGeocode(lat, lng);
+    });
+
+    // Add search box
+    const input = document.getElementById('location-search');
+    const searchBox = new window.google.maps.places.SearchBox(input);
+    
+    mapInstance.addListener('bounds_changed', () => {
+      searchBox.setBounds(mapInstance.getBounds());
+    });
+
+    searchBox.addListener('places_changed', () => {
+      const places = searchBox.getPlaces();
+      if (places.length === 0) return;
+
+      const place = places[0];
+      if (!place.geometry || !place.geometry.location) return;
+
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+
+      mapInstance.setCenter({ lat, lng });
+      mapInstance.setZoom(15);
+      markerInstance.setPosition({ lat, lng });
+
+      setFormData(prev => ({
+        ...prev,
+        address: place.formatted_address || '',
+        coordinates: {
+          latitude: lat,
+          longitude: lng
+        }
+      }));
+    });
+
+    setMap(mapInstance);
+    setMarker(markerInstance);
+  };
+
+  const reverseGeocode = async (lat, lng) => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        setFormData(prev => ({
+          ...prev,
+          address: results[0].formatted_address
+        }));
+      }
+    });
+  };
+
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          if (map && marker) {
+            map.setCenter({ lat, lng });
+            map.setZoom(15);
+            marker.setPosition({ lat, lng });
+            
+            setFormData(prev => ({
+              ...prev,
+              coordinates: {
+                latitude: lat,
+                longitude: lng
+              }
+            }));
+            reverseGeocode(lat, lng);
+          }
+        },
+        (error) => {
+          toast.error('Unable to get your location');
+        }
+      );
+    } else {
+      toast.error('Geolocation is not supported by your browser');
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -83,7 +235,7 @@ const AddServiceCenter = () => {
         updatedAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, 'serviceCenters'), docData);
+      await addDoc(collection(db, 'ServiceCenters'), docData);
       toast.success('Service center added successfully!');
       navigate('/service-centers');
     } catch (error) {
@@ -115,6 +267,88 @@ const AddServiceCenter = () => {
         {/* Form Container */}
         <div className="max-w-4xl">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Map Section */}
+            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
+                <div className="p-2.5 bg-blue-50 rounded-xl">
+                  <FiMapPin className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-gray-900">Location & Map</h3>
+                  <p className="text-sm text-gray-600">Pin the exact location on the map</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-600 rounded-xl hover:bg-primary-100 transition-colors"
+                >
+                  <FiNavigation className="w-4 h-4" />
+                  <span className="text-sm font-medium">Use Current</span>
+                </button>
+              </div>
+
+              {/* Location Search */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Search Location
+                </label>
+                <div className="relative">
+                  <FiMapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    id="location-search"
+                    type="text"
+                    placeholder="Search for a location..."
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
+                  />
+                </div>
+              </div>
+
+              {/* Map Container */}
+              <div className="relative">
+                <div 
+                  id="map" 
+                  className="w-full h-96 rounded-xl overflow-hidden border border-gray-200"
+                  style={{ minHeight: '384px' }}
+                ></div>
+                {!mapLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-xl">
+                    <div className="text-center">
+                      <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className="text-sm text-gray-600">Loading map...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Coordinates Display */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.coordinates.latitude}
+                    readOnly
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 font-mono text-sm"
+                    step="any"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.coordinates.longitude}
+                    readOnly
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 font-mono text-sm"
+                    step="any"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Basic Information Section */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
               <div className="flex items-center gap-3 pb-4 border-b border-gray-200">

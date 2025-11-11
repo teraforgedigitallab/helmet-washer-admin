@@ -20,7 +20,7 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const serviceCentersSnapshot = await getDocs(collection(db, 'serviceCenters'));
+      const serviceCentersSnapshot = await getDocs(collection(db, 'ServiceCenters'));
       setStats(prev => ({
         ...prev,
         serviceCenters: serviceCentersSnapshot.size

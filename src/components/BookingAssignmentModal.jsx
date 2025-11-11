@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
-import { 
-  FiX, FiSearch, FiUser, FiMapPin, FiPhone, FiStar, FiTruck, 
-  FiCheckCircle, FiClock, FiNavigation, FiPackage 
+import {
+  FiX, FiSearch, FiUser, FiMapPin, FiPhone, FiStar, FiTruck,
+  FiCheckCircle, FiClock, FiNavigation, FiPackage
 } from 'react-icons/fi';
 
 const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
@@ -63,7 +63,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
       return;
     }
 
-    const filtered = riders.filter(rider => 
+    const filtered = riders.filter(rider =>
       rider.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rider.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rider.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -76,6 +76,8 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
     return `${(Math.random() * 10 + 1).toFixed(1)} km`;
   };
 
+  // Find the assignRider function and replace it with this:
+
   const assignRider = async () => {
     if (!selectedRider) {
       toast.error('Please select a rider');
@@ -84,68 +86,67 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
 
     try {
       setLoading(true);
-      
       const now = Timestamp.now();
-      const assignmentData = {
-        riderId: selectedRider.id,
-        riderName: selectedRider.name,
-        riderPhone: selectedRider.phoneNumber,
-        assignmentType,
-        assignedAt: now,
-        assignedBy: 'admin',
-        status: 'assigned'
-      };
 
-      let updatedTracking = { ...booking.tracking };
-      let newStatus = booking.status;
-      
+      // Determine which rider field to update and next stage
+      const riderField = assignmentType === 'pickup' ? 'pickupRider' : 'deliveryRider';
+      const nextStage = assignmentType === 'pickup' ? 'out_for_pickup' : 'out_for_delivery'; // FIXED!
+
+      console.log('Assigning rider:', assignmentType, 'Next stage:', nextStage);
+
+      // Find the index of current and next stage
+      const currentStageIndex = booking.tracking.stages.findIndex(
+        s => s.stage === booking.tracking.currentStage
+      );
+
+      const nextStageIndex = booking.tracking.stages.findIndex(
+        s => s.stage === nextStage
+      );
+
+      console.log('Current stage index:', currentStageIndex, 'Next stage index:', nextStageIndex);
+
+      // Update stages array
+      const updatedStages = booking.tracking.stages.map((stage, index) => {
+        if (index === currentStageIndex) {
+          return { ...stage, status: 'completed', completedAt: now };
+        }
+        if (index === nextStageIndex) {
+          return { ...stage, status: 'in_progress', startedAt: now };
+        }
+        return stage;
+      });
+
+      // Determine booking status
+      let newStatus = 'in_progress';
       if (assignmentType === 'pickup') {
-        updatedTracking = {
-          ...booking.tracking,
-          currentStage: 'helmet_picked_up',
-          stages: booking.tracking.stages.map((stage) => {
-            if (stage.stage === 'pickup_scheduled') {
-              return { ...stage, status: 'completed', completedAt: now };
-            }
-            if (stage.stage === 'helmet_picked_up') {
-              return { ...stage, status: 'in_progress', startedAt: now };
-            }
-            return stage;
-          })
-        };
         newStatus = 'assigned_for_pickup';
       } else if (assignmentType === 'delivery') {
-        updatedTracking = {
-          ...booking.tracking,
-          currentStage: 'out_for_delivery',
-          stages: booking.tracking.stages.map((stage) => {
-            if (stage.stage === 'ready_for_delivery') {
-              return { ...stage, status: 'completed', completedAt: now };
-            }
-            if (stage.stage === 'out_for_delivery') {
-              return { ...stage, status: 'in_progress', startedAt: now };
-            }
-            return stage;
-          })
-        };
         newStatus = 'assigned_for_delivery';
       }
 
       const updateData = {
-        tracking: updatedTracking,
+        [riderField]: {
+          riderId: selectedRider.id,
+          riderName: selectedRider.name,
+          riderPhone: selectedRider.phoneNumber,
+          assignedAt: now,
+          assignedBy: 'admin'
+        },
+        tracking: {
+          ...booking.tracking,
+          currentStage: nextStage,
+          stages: updatedStages
+        },
         status: newStatus,
         updatedAt: now
       };
 
-      if (assignmentType === 'pickup') {
-        updateData.pickupRider = assignmentData;
-      } else {
-        updateData.deliveryRider = assignmentData;
-      }
+      console.log('Updating booking with:', updateData);
 
       await updateDoc(doc(db, 'Bookings', booking.id), updateData);
 
-      await addDoc(collection(db, 'riderAssignments'), {
+      // Create rider assignment record
+      await addDoc(collection(db, 'RiderAssignments'), {
         bookingId: booking.id,
         bookingNumber: booking.bookingNumber,
         riderId: selectedRider.id,
@@ -158,8 +159,9 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         status: 'active'
       });
 
-      toast.success(`Rider assigned for ${assignmentType} successfully!`);
-      onSuccess && onSuccess();
+      toast.success(`${assignmentType === 'pickup' ? 'Pickup' : 'Delivery'} rider assigned successfully!`);
+
+      onSuccess(assignmentType);
       onClose();
     } catch (error) {
       console.error('Error assigning rider:', error);
@@ -290,11 +292,10 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
                   <div
                     key={rider.id}
                     onClick={() => setSelectedRider(rider)}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      selectedRider?.id === rider.id
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedRider?.id === rider.id
                         ? 'border-primary-500 bg-primary-50'
                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-4">
                       {/* Avatar */}

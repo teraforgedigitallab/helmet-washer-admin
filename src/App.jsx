@@ -7,6 +7,9 @@ import Dashboard from './pages/Dashboard';
 import ServiceCenters from './pages/ServiceCenters';
 import AddServiceCenter from './pages/AddServiceCenter';
 import EditServiceCenter from './pages/EditServiceCenter';
+import Users from './pages/Users';
+import Riders from './pages/Riders';
+import Bookings from './pages/Bookings';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -28,6 +31,9 @@ const App = () => {
               <Route path="/service-centers" element={<ServiceCenters />} />
               <Route path="/service-centers/add" element={<AddServiceCenter />} />
               <Route path="/service-centers/edit/:id" element={<EditServiceCenter />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/riders" element={<Riders />} />
+              <Route path="/bookings" element={<Bookings />} />
             </Routes>
           </main>
         </div>

@@ -7,7 +7,9 @@ import {
   FiUsers, 
   FiTrendingUp,
   FiChevronLeft,
-  FiChevronRight
+  FiChevronRight,
+  FiTruck,
+  FiClipboard
 } from 'react-icons/fi';
 import logo from '../assets/logo.png';
 
@@ -15,7 +17,9 @@ const Sidebar = ({ isOpen, onToggle }) => {
   const menuItems = [
     { name: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { name: 'Service Centers', icon: FiMapPin, path: '/service-centers' },
-    { name: 'Users', icon: FiUsers, path: '/users', disabled: true },
+    { name: 'Users', icon: FiUsers, path: '/users' },
+    { name: 'Riders', icon: FiTruck, path: '/riders' },
+    { name: 'Bookings', icon: FiClipboard, path: '/bookings' },
     { name: 'Analytics', icon: FiTrendingUp, path: '/analytics', disabled: true },
     { name: 'Settings', icon: FiSettings, path: '/settings', disabled: true },
   ];

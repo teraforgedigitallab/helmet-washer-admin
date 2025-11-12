@@ -76,8 +76,6 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
     return `${(Math.random() * 10 + 1).toFixed(1)} km`;
   };
 
-  // Find the assignRider function and replace it with this:
-
   const assignRider = async () => {
     if (!selectedRider) {
       toast.error('Please select a rider');
@@ -91,6 +89,10 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
       // Determine which rider field to update and next stage
       const riderField = assignmentType === 'pickup' ? 'pickupRider' : 'deliveryRider';
       const nextStage = assignmentType === 'pickup' ? 'out_for_pickup' : 'out_for_delivery'; // FIXED!
+
+      // Generate OTP for Doorstep services
+      const isDoorstep = booking.deliveryType === 'doorstep';
+      const otp = isDoorstep ? Math.floor(1000 + Math.random() * 9000).toString() : null;
 
       console.log('Assigning rider:', assignmentType, 'Next stage:', nextStage);
 
@@ -124,14 +126,17 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         newStatus = 'assigned_for_delivery';
       }
 
+      const riderData = {
+        riderId: selectedRider.id,
+        riderName: selectedRider.name,
+        riderPhone: selectedRider.phoneNumber,
+        assignedAt: now,
+        assignedBy: 'admin',
+        ... (isDoorstep && { otp })
+      };
+
       const updateData = {
-        [riderField]: {
-          riderId: selectedRider.id,
-          riderName: selectedRider.name,
-          riderPhone: selectedRider.phoneNumber,
-          assignedAt: now,
-          assignedBy: 'admin'
-        },
+        [riderField]: riderData,
         tracking: {
           ...booking.tracking,
           currentStage: nextStage,
@@ -156,7 +161,8 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         customerAddress: booking.addressDetails?.fullAddress,
         assignedAt: now,
         assignedBy: 'admin',
-        status: 'active'
+        status: 'active',
+        ... (isDoorstep && { otp })
       });
 
       toast.success(`${assignmentType === 'pickup' ? 'Pickup' : 'Delivery'} rider assigned successfully!`);

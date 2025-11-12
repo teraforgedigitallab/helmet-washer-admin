@@ -342,13 +342,15 @@ const Bookings = () => {
 
                                         {/* Single Action Button */}
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <button
-                                                onClick={() => openBookingDetails(booking)}
-                                                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm"
-                                            >
-                                                <FiEye className="w-4 h-4" />
-                                                Manage
-                                            </button>
+                                            {booking.status !== 'cancelled' && (
+                                                <button
+                                                    onClick={() => openBookingDetails(booking)}
+                                                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm"
+                                                >
+                                                    <FiEye className="w-4 h-4" />
+                                                    Manage
+                                                </button>
+                                            )}
                                         </div>
 
                                         {/* Amount (Desktop) */}

@@ -71,11 +71,6 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
     setFilteredRiders(filtered);
   };
 
-  const calculateDistance = (rider) => {
-    if (!rider.addresses || !booking?.addressDetails?.coordinates) return 'N/A';
-    return `${(Math.random() * 10 + 1).toFixed(1)} km`;
-  };
-
   const assignRider = async () => {
     if (!selectedRider) {
       toast.error('Please select a rider');
@@ -88,7 +83,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
 
       // Determine which rider field to update and next stage
       const riderField = assignmentType === 'pickup' ? 'pickupRider' : 'deliveryRider';
-      const nextStage = assignmentType === 'pickup' ? 'out_for_pickup' : 'out_for_delivery'; // FIXED!
+      const nextStage = assignmentType === 'pickup' ? 'out_for_pickup' : 'out_for_delivery';
 
       // Generate OTP for Doorstep services
       const isDoorstep = booking.deliveryType === 'doorstep';
@@ -96,24 +91,40 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
 
       console.log('Assigning rider:', assignmentType, 'Next stage:', nextStage);
 
-      // Find the index of current and next stage
+      // Find the index of current stage (pickup_scheduled or ready_for_delivery)
       const currentStageIndex = booking.tracking.stages.findIndex(
         s => s.stage === booking.tracking.currentStage
       );
 
+      // Find the index of next stage (out_for_pickup or out_for_delivery)
       const nextStageIndex = booking.tracking.stages.findIndex(
         s => s.stage === nextStage
       );
 
-      console.log('Current stage index:', currentStageIndex, 'Next stage index:', nextStageIndex);
+      console.log('Current stage:', booking.tracking.currentStage, 'index:', currentStageIndex);
+      console.log('Next stage:', nextStage, 'index:', nextStageIndex);
+
+      if (currentStageIndex === -1 || nextStageIndex === -1) {
+        throw new Error('Invalid stage configuration');
+      }
 
       // Update stages array
       const updatedStages = booking.tracking.stages.map((stage, index) => {
+        // Complete the current stage (pickup_scheduled or ready_for_delivery)
         if (index === currentStageIndex) {
-          return { ...stage, status: 'completed', completedAt: now };
+          return { 
+            ...stage, 
+            status: 'completed', 
+            completedAt: now 
+          };
         }
+        // Start the next stage (out_for_pickup or out_for_delivery)
         if (index === nextStageIndex) {
-          return { ...stage, status: 'in_progress', startedAt: now };
+          return { 
+            ...stage, 
+            status: 'in_progress', 
+            startedAt: now 
+          };
         }
         return stage;
       });
@@ -132,7 +143,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         riderPhone: selectedRider.phoneNumber,
         assignedAt: now,
         assignedBy: 'admin',
-        ... (isDoorstep && { otp })
+        ...(isDoorstep && { otp })
       };
 
       const updateData = {
@@ -162,7 +173,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         assignedAt: now,
         assignedBy: 'admin',
         status: 'active',
-        ... (isDoorstep && { otp })
+        ...(isDoorstep && { otp })
       });
 
       toast.success(`${assignmentType === 'pickup' ? 'Pickup' : 'Delivery'} rider assigned successfully!`);
@@ -243,7 +254,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center gap-2">
                     <FiClock className="w-4 h-4 text-gray-400" />
-                    <span>{booking.timeSlot?.time}</span>
+                    <span>{booking.schedule?.timeSlot?.time || booking.timeSlot?.time || 'Not specified'}</span>
                   </div>
                 </div>
               </div>
@@ -298,10 +309,11 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
                   <div
                     key={rider.id}
                     onClick={() => setSelectedRider(rider)}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedRider?.id === rider.id
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      selectedRider?.id === rider.id
                         ? 'border-primary-500 bg-primary-50'
                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
+                    }`}
                   >
                     <div className="flex items-center gap-4">
                       {/* Avatar */}
@@ -333,14 +345,6 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
                             <FiPhone className="w-3 h-3" />
                             <span>{rider.phoneNumber}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <FiNavigation className="w-3 h-3" />
-                            <span>{calculateDistance(rider)}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <FiStar className="w-3 h-3 text-yellow-500" />
-                            <span>4.8</span>
-                          </div>
                         </div>
                       </div>
 
@@ -371,7 +375,9 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
               {selectedRider ? (
                 <div className="flex items-center gap-2">
                   <FiCheckCircle className="w-5 h-5 text-green-600" />
-                  <span>Selected: <strong className="text-gray-900">{selectedRider.name}</strong></span>
+                  <span>
+                    Selected: <strong className="text-gray-900">{selectedRider.name}</strong>
+                  </span>
                 </div>
               ) : (
                 <span>Please select a rider to continue</span>

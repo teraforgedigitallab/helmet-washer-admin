@@ -418,7 +418,7 @@ const Bookings = () => {
                 </div>
             ) : (
                 <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-                    <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <div className="w-16 h-16 bg-linear-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center mx-auto mb-4">
                         <FiClipboard className="w-8 h-8 text-gray-400" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">

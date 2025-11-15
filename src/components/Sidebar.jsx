@@ -9,7 +9,8 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiTruck,
-  FiClipboard
+  FiClipboard,
+  FiStar
 } from 'react-icons/fi';
 import logo from '../assets/logo.png';
 
@@ -20,6 +21,7 @@ const Sidebar = ({ isOpen, onToggle }) => {
     { name: 'Users', icon: FiUsers, path: '/users' },
     { name: 'Riders', icon: FiTruck, path: '/riders' },
     { name: 'Bookings', icon: FiClipboard, path: '/bookings' },
+    { name: 'Ratings', icon: FiStar, path: '/ratings' },
     { name: 'Analytics', icon: FiTrendingUp, path: '/analytics', disabled: true },
     { name: 'Settings', icon: FiSettings, path: '/settings', disabled: true },
   ];

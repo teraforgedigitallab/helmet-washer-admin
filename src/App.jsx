@@ -10,6 +10,7 @@ import EditServiceCenter from './pages/EditServiceCenter';
 import Users from './pages/Users';
 import Riders from './pages/Riders';
 import Bookings from './pages/Bookings';
+import Ratings from './pages/Ratings';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -34,6 +35,7 @@ const App = () => {
               <Route path="/users" element={<Users />} />
               <Route path="/riders" element={<Riders />} />
               <Route path="/bookings" element={<Bookings />} />
+              <Route path="/ratings" element={<Ratings />} />
             </Routes>
           </main>
         </div>

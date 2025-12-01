@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit, FiTrash2, FiMapPin, FiClock, FiStar, FiSearch, FiFilter } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiMapPin, FiClock, FiStar, FiSearch, FiFilter, FiMap } from 'react-icons/fi';
 
 const ServiceCenters = () => {
   const [serviceCenters, setServiceCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [showPincodeModal, setShowPincodeModal] = useState(false);
+  const [startPincode, setStartPincode] = useState('');
+  const [endPincode, setEndPincode] = useState('');
+  const [isCreatingPincodes, setIsCreatingPincodes] = useState(false);
 
   useEffect(() => {
     fetchServiceCenters();
@@ -47,7 +51,7 @@ const ServiceCenters = () => {
 
   const filteredCenters = serviceCenters.filter(center => {
     const matchesSearch = center.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         center.address?.toLowerCase().includes(searchTerm.toLowerCase());
+      center.address?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || center.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -58,9 +62,9 @@ const ServiceCenters = () => {
       'Closed': { bg: 'bg-red-100', text: 'text-red-800', dot: 'bg-red-500' },
       'Closing Soon': { bg: 'bg-yellow-100', text: 'text-yellow-800', dot: 'bg-yellow-500' }
     };
-    
+
     const config = statusConfig[status] || statusConfig['Closed'];
-    
+
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>
         <div className={`w-1.5 h-1.5 rounded-full ${config.dot} animate-pulse`}></div>
@@ -97,13 +101,40 @@ const ServiceCenters = () => {
             Manage and monitor all {serviceCenters.length} service center locations
           </p>
         </div>
-        <Link
-          to="/service-centers/add"
-          className="inline-flex items-center justify-center gap-2 bg-linear-to-r from-primary-500 to-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-200"
-        >
-          <FiPlus className="w-5 h-5" />
-          <span>Add Center</span>
-        </Link>
+        <div className="flex flex-wrap gap-3">
+
+          <Link
+            to="/service-centers/add"
+            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-200"
+          >
+            <FiPlus className="w-5 h-5" />
+            <span>Add Center</span>
+          </Link>
+
+          <button
+            onClick={() => setShowPincodeModal(true)}
+            disabled={isCreatingPincodes}
+            className={`inline-flex items-center justify-center gap-2 ${isCreatingPincodes
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-primary-500 to-primary-600 hover:shadow-lg hover:scale-105'
+              } text-white px-4 py-3 rounded-xl font-semibold transition-all duration-200`}
+          >
+            {isCreatingPincodes ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Creating...
+              </>
+            ) : (
+              <>
+                <FiMap className="w-5 h-5" />
+                <span>Add Pincode</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -152,7 +183,7 @@ const ServiceCenters = () => {
                       <StatusBadge status={center.status} />
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
                     <Link
                       to={`/service-centers/edit/${center.id}`}
@@ -221,8 +252,8 @@ const ServiceCenters = () => {
             {searchTerm || filterStatus !== 'all' ? 'No matching centers found' : 'No service centers yet'}
           </h3>
           <p className="text-sm sm:text-base text-gray-600 mb-8 max-w-md mx-auto px-4 leading-relaxed">
-            {searchTerm || filterStatus !== 'all' 
-              ? 'Try adjusting your search or filter criteria to find what you\'re looking for.' 
+            {searchTerm || filterStatus !== 'all'
+              ? 'Try adjusting your search or filter criteria to find what you\'re looking for.'
               : 'Get started by adding your first service center location to expand your network.'
             }
           </p>
@@ -237,8 +268,127 @@ const ServiceCenters = () => {
           )}
         </div>
       )}
+      {/* Pincode Modal */}
+      {showPincodeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Pincode Range</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Pincode
+                </label>
+                <input
+                  type="number"
+                  value={startPincode}
+                  onChange={(e) => setStartPincode(e.target.value)}
+                  placeholder="e.g., 400001"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  disabled={isCreatingPincodes}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Pincode
+                </label>
+                <input
+                  type="number"
+                  value={endPincode}
+                  onChange={(e) => setEndPincode(e.target.value)}
+                  placeholder="e.g., 400100"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  disabled={isCreatingPincodes}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowPincodeModal(false);
+                    setStartPincode('');
+                    setEndPincode('');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  disabled={isCreatingPincodes}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={createPincodeRanges}
+                  disabled={isCreatingPincodes || !startPincode || !endPincode}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${isCreatingPincodes || !startPincode || !endPincode
+                    ? 'bg-blue-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                >
+                  {isCreatingPincodes ? 'Creating...' : 'Create Ranges'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+
+  async function createPincodeRanges() {
+    const start = parseInt(startPincode);
+    const end = parseInt(endPincode);
+
+    if (isNaN(start) || isNaN(end) || start > end) {
+      toast.error('Please enter valid pincode range');
+      return;
+    }
+
+    if (!window.confirm(`This will create pincode range documents from ${start} to ${end}. Continue?`)) {
+      return;
+    }
+
+    setIsCreatingPincodes(true);
+    const batchSize = 10;
+    const totalRanges = Math.ceil((end - start + 1) / 100);
+
+    try {
+      for (let i = 0; i < totalRanges; i += batchSize) {
+        const batchPromises = [];
+
+        // Process a batch of ranges
+        for (let j = 0; j < batchSize && (i + j) < totalRanges; j++) {
+          const rangeNum = i + j;
+          const rangeStart = start + (rangeNum * 100);
+          const rangeEnd = Math.min(rangeStart + 99, end);
+          const docId = `${rangeStart}---${rangeEnd}`;
+
+          // Check if document already exists
+          const docRef = doc(db, 'Pincode', docId);
+          const docSnap = await getDoc(docRef);
+
+          // Only create if document doesn't exist
+          if (!docSnap.exists()) {
+            batchPromises.push(
+              setDoc(docRef, { availablePincodes: [] })
+            );
+          }
+        }
+
+        // Wait for the current batch to complete
+        if (batchPromises.length > 0) {
+          await Promise.all(batchPromises);
+        }
+
+        console.log(`Processed ranges ${i + 1} to ${Math.min(i + batchSize, totalRanges)}`);
+      }
+
+      toast.success('Pincode ranges created successfully!');
+      setShowPincodeModal(false);
+      setStartPincode('');
+      setEndPincode('');
+    } catch (error) {
+      console.error('Error creating pincode ranges:', error);
+      toast.error('Failed to create pincode ranges');
+    } finally {
+      setIsCreatingPincodes(false);
+    }
+  }
 };
 
 export default ServiceCenters;

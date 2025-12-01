@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
 import {
     FiClipboard, FiSearch, FiFilter, FiUser, FiPhone, FiDollarSign,
     FiMapPin, FiClock, FiPackage, FiTruck, FiCreditCard, FiCheckCircle,
-    FiXCircle, FiAlertCircle, FiEye, FiHome, FiShoppingBag
+    FiXCircle, FiAlertCircle, FiEye, FiHome, FiShoppingBag, FiPlus, FiMap
 } from 'react-icons/fi';
 import BookingDetailsModal from '../components/BookingDetailsModal';
 
@@ -19,6 +19,7 @@ const Bookings = () => {
     const [sortBy, setSortBy] = useState('createdAt');
     const [selectedBooking, setSelectedBooking] = useState(null);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [isCreatingPincodes, setIsCreatingPincodes] = useState(false);
 
     useEffect(() => {
         fetchBookings();
@@ -33,6 +34,7 @@ const Bookings = () => {
                 bookingsData.push({ id: doc.id, ...doc.data() });
             });
             setBookings(bookingsData);
+            console.log('All Bookings:', bookingsData); // Log all booking documents
         } catch (error) {
             console.error('Error fetching bookings:', error);
             toast.error('Failed to fetch bookings');
@@ -68,7 +70,7 @@ const Bookings = () => {
     const getBookingType = (booking) => {
         const serviceType = booking.serviceType || 'Unknown';
         const deliveryType = booking.deliveryType || 'Unknown';
-        
+
         return {
             service: serviceType,
             delivery: deliveryType,
@@ -138,7 +140,7 @@ const Bookings = () => {
 
     const handleModalSuccess = async () => {
         await fetchBookings();
-        
+
         if (selectedBooking && showDetailsModal) {
             try {
                 const bookingDoc = await getDoc(doc(db, 'Bookings', selectedBooking.id));
@@ -189,6 +191,45 @@ const Bookings = () => {
         repair: bookings.filter(b => b.serviceType === 'Helmet Repair').length,
     };
 
+    const createPincodeRanges = async () => {
+        if (window.confirm('This will create pincode range documents from 400001-400100 to 499900-500000. Continue?')) {
+            setIsCreatingPincodes(true);
+            const batchSize = 10; // Process 10 ranges at a time
+            const totalRanges = 1000; // Total number of 100-pincode ranges from 400000 to 500000
+
+            try {
+                for (let i = 0; i < totalRanges; i += batchSize) {
+                    const batchPromises = [];
+
+                    // Process a batch of ranges
+                    for (let j = 0; j < batchSize && (i + j) < totalRanges; j++) {
+                        const rangeNum = i + j;
+                        const startPincode = 400000 + (rangeNum * 100) + 1;
+                        const endPincode = Math.min(400000 + ((rangeNum + 1) * 100), 500000);
+                        const docId = `${startPincode}---${endPincode}`;
+
+                        // Add the document creation to the batch
+                        const docRef = doc(db, 'Pincode', docId);
+                        batchPromises.push(
+                            setDoc(docRef, { availablePincodes: [] }, { merge: true })
+                        );
+                    }
+
+                    // Wait for the current batch to complete
+                    await Promise.all(batchPromises);
+                    console.log(`Processed ranges ${i + 1} to ${Math.min(i + batchSize, totalRanges)}`);
+                }
+
+                toast.success('Pincode ranges created successfully!');
+            } catch (error) {
+                console.error('Error creating pincode ranges:', error);
+                toast.error('Failed to create pincode ranges');
+            } finally {
+                setIsCreatingPincodes(false);
+            }
+        }
+    };
+
     if (loading) {
         return (
             <div className="p-4 sm:p-6 lg:p-8">
@@ -213,6 +254,38 @@ const Bookings = () => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+            <div className="container mx-auto px-4 py-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <h1 className="text-2xl font-bold text-gray-800">Bookings</h1>
+                    <button
+                        onClick={createPincodeRanges}
+                        disabled={isCreatingPincodes}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isCreatingPincodes
+                                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                    >
+                        {isCreatingPincodes ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Creating...
+                            </>
+                        ) : (
+                            <>
+                                <FiMap className="w-4 h-4" />
+                                Create Pincode Ranges
+                            </>
+                        )}
+                    </button>
+                    <p className="text-sm sm:text-base text-gray-600 mt-1">
+                        {bookings.length} total bookings
+                    </p>
+                </div>
+            </div>
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -235,7 +308,7 @@ const Bookings = () => {
                         className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200"
                     />
                 </div>
-                
+
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="relative">
                         <FiFilter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" />
@@ -301,7 +374,7 @@ const Bookings = () => {
                     <div className="divide-y divide-gray-100">
                         {filteredBookings.map((booking) => {
                             const bookingType = getBookingType(booking);
-                            
+
                             return (
                                 <div key={booking.id} className="p-4 hover:bg-gray-50 transition-colors">
                                     {/* Main Booking Row */}
@@ -422,8 +495,8 @@ const Bookings = () => {
                         <FiClipboard className="w-8 h-8 text-gray-400" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                        {searchTerm || statusFilter !== 'all' || serviceTypeFilter !== 'all' || deliveryTypeFilter !== 'all' 
-                            ? 'No matching bookings found' 
+                        {searchTerm || statusFilter !== 'all' || serviceTypeFilter !== 'all' || deliveryTypeFilter !== 'all'
+                            ? 'No matching bookings found'
                             : 'No bookings yet'}
                     </h3>
                     <p className="text-sm text-gray-600">

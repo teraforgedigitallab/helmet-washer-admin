@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { findShortestCenter } from '../utils/findShortestCenter';
 import { Link } from 'react-router-dom';
 import { collection, getDocs, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -9,11 +10,14 @@ const ServiceCenters = () => {
   const [serviceCenters, setServiceCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
   const [showPincodeModal, setShowPincodeModal] = useState(false);
   const [startPincode, setStartPincode] = useState('');
   const [endPincode, setEndPincode] = useState('');
   const [isCreatingPincodes, setIsCreatingPincodes] = useState(false);
+  const [showFindCenterModal, setShowFindCenterModal] = useState(false);
+  const [longitude, setLongitude] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [pincode, setPincode] = useState('');
 
   useEffect(() => {
     fetchServiceCenters();
@@ -52,9 +56,52 @@ const ServiceCenters = () => {
   const filteredCenters = serviceCenters.filter(center => {
     const matchesSearch = center.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       center.address?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || center.status === filterStatus;
-    return matchesSearch && matchesFilter;
+    return matchesSearch;
   });
+
+  const getStatus = (operatingHours) => {
+    const now = new Date();
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const today = days[now.getDay()];
+
+    const hours = operatingHours[today];
+    if (!hours || hours === '00:00 AM - 00:00 PM') {
+      return 'Closed';
+    }
+
+    const [openStr, closeStr] = hours.split(' - ');
+
+    const parseTime = (timeStr) => {
+      const [time, modifier] = timeStr.split(' ');
+      let [hours, minutes] = time.split(':');
+      if (hours === '12') {
+        hours = '00';
+      }
+      if (modifier === 'PM') {
+        hours = parseInt(hours, 10) + 12;
+      }
+      const date = new Date();
+      date.setHours(hours, minutes, 0, 0);
+      return date;
+    };
+
+    const openTime = parseTime(openStr);
+    const closeTime = parseTime(closeStr);
+
+    const openingSoonTime = new Date(openTime.getTime() - 90 * 60000);
+    const closingSoonTime = new Date(closeTime.getTime() - 90 * 60000);
+
+    if (now >= openTime && now <= closeTime) {
+      if (now >= closingSoonTime) {
+        return 'Closing Soon';
+      }
+      return 'Open';
+    } else if (now < openTime && now >= openingSoonTime) {
+      return 'Opening Soon';
+    } else {
+      return 'Closed';
+    }
+  };
 
   const StatusBadge = ({ status }) => {
     const statusConfig = {
@@ -134,6 +181,16 @@ const ServiceCenters = () => {
               </>
             )}
           </button>
+
+          <button
+            onClick={() => setShowFindCenterModal(true)}
+            className='inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary-500 to-primary-600 hover:shadow-lg hover:scale-105 text-white px-4 py-3 rounded-xl font-semibold transition-all duration-200'
+          >
+            <>
+              <FiSearch className="w-5 h-5" />
+              <span>Find Center</span>
+            </>
+          </button>
         </div>
       </div>
 
@@ -148,19 +205,6 @@ const ServiceCenters = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
           />
-        </div>
-        <div className="relative">
-          <FiFilter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" />
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full sm:w-48 pl-12 pr-10 py-3.5 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 appearance-none cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
-            <option value="Closing Soon">Closing Soon</option>
-          </select>
         </div>
       </div>
 
@@ -180,7 +224,7 @@ const ServiceCenters = () => {
                       <h3 className="font-bold text-gray-900 truncate text-lg mb-1">
                         {center.name}
                       </h3>
-                      <StatusBadge status={center.status} />
+                      <StatusBadge status={getStatus(center.operatingHours)} />
                     </div>
                   </div>
 
@@ -227,18 +271,34 @@ const ServiceCenters = () => {
                   </div>
                 </div>
 
+                {/* Operating Hours */}
+                <div className="pt-4 border-t border-gray-100">
+                  <p className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">
+                    Operating Hours
+                  </p>
+                  <div className="space-y-1 text-sm">
+                    {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
+                      <div key={day} className="flex justify-between">
+                        <span className="capitalize text-gray-600">{day.charAt(0).toUpperCase() + day.slice(1)}:</span>
+                        <span className="font-semibold text-gray-800">
+                          {center.operatingHours && center.operatingHours[day] && center.operatingHours[day] !== '00:00 AM - 00:00 PM'
+                            ? center.operatingHours[day]
+                            : 'Closed'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Stats */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                {/* <div className="flex items-center justify-end pt-4 border-t border-gray-100">
                   <div className="flex items-center gap-1.5">
                     <FiStar className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                     <span className="font-bold text-gray-900">{center.rating || 'N/A'}</span>
                     <span className="text-gray-500 text-sm">({center.reviewCount || 0})</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-gray-600">
-                    <FiClock className="w-4 h-4" />
-                    <span className="text-xs font-medium">{center.operatingHours?.weekday || 'N/A'}</span>
-                  </div>
-                </div>
+
+                </div> */}
               </div>
             </div>
           ))}
@@ -249,15 +309,15 @@ const ServiceCenters = () => {
             <FiMapPin className="w-12 h-12 text-gray-400" />
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
-            {searchTerm || filterStatus !== 'all' ? 'No matching centers found' : 'No service centers yet'}
+            {searchTerm ? 'No matching centers found' : 'No service centers yet'}
           </h3>
           <p className="text-sm sm:text-base text-gray-600 mb-8 max-w-md mx-auto px-4 leading-relaxed">
-            {searchTerm || filterStatus !== 'all'
-              ? 'Try adjusting your search or filter criteria to find what you\'re looking for.'
+            {searchTerm
+              ? 'Try adjusting your search to find what you\'re looking for.'
               : 'Get started by adding your first service center location to expand your network.'
             }
           </p>
-          {!searchTerm && filterStatus === 'all' && (
+          {!searchTerm && (
             <Link
               to="/service-centers/add"
               className="inline-flex items-center gap-2 bg-linear-to-r from-primary-500 to-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-200"
@@ -321,6 +381,75 @@ const ServiceCenters = () => {
                     }`}
                 >
                   {isCreatingPincodes ? 'Creating...' : 'Create Ranges'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Find Center Modal */}
+      {showFindCenterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Find Nearest Center</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Longitude
+                </label>
+                <input
+                  type="text"
+                  value={longitude}
+                  onChange={(e) => setLongitude(e.target.value)}
+                  placeholder="e.g., 72.8777"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Latitude
+                </label>
+                <input
+                  type="text"
+                  value={latitude}
+                  onChange={(e) => setLatitude(e.target.value)}
+                  placeholder="e.g., 19.0760"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pincode
+                </label>
+                <input
+                  type="text"
+                  value={pincode}
+                  onChange={(e) => setPincode(e.target.value)}
+                  placeholder="e.g., 400072"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowFindCenterModal(false);
+                    setLongitude('');
+                    setLatitude('');
+                    setPincode('');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    findShortestCenter(longitude, latitude, pincode);
+                    setShowFindCenterModal(false);
+                  }}
+                  className='px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors bg-blue-600 hover:bg-blue-700'
+                >
+                  Find Center
                 </button>
               </div>
             </div>

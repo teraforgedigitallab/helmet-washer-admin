@@ -17,10 +17,11 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, setDoc, arrayUnion, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
 import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle, FiNavigation } from 'react-icons/fi';
+import TimePicker from '../components/TimePicker';
 
 const AddServiceCenter = () => {
   const navigate = useNavigate();
@@ -32,19 +33,20 @@ const AddServiceCenter = () => {
     pincode: '',
     city: '',
     locality: '',
-    rating: 4.5,
-    reviewCount: 0,
     distance: '',
-    status: 'Open',
     phone: '',
     coordinates: {
       latitude: 19.0760,
       longitude: 72.8777
     },
     operatingHours: {
-      weekday: '9:00 AM - 8:00 PM',
-      saturday: '9:00 AM - 9:00 PM',
-      sunday: '10:00 AM - 7:00 PM',
+      monday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      tuesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      wednesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      thursday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      friday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      saturday: { open: '09:00 AM', close: '09:00 PM', isClosed: false },
+      sunday: { open: '10:00 AM', close: '07:00 PM', isClosed: false },
     },
     services: []
   });
@@ -177,13 +179,23 @@ const AddServiceCenter = () => {
     }));
   };
 
-  const handleOperatingHoursChange = (day, value) => {
+  const handleOperatingHoursChange = (day, part, value) => {
     setFormData(prev => ({
       ...prev,
       operatingHours: {
         ...prev.operatingHours,
-        [day]: value
-      }
+        [day]: { ...prev.operatingHours[day], [part]: value },
+      },
+    }));
+  };
+
+  const handleOperatingHoursClose = (day, isClosed) => {
+    setFormData(prev => ({
+      ...prev,
+      operatingHours: {
+        ...prev.operatingHours,
+        [day]: { ...prev.operatingHours[day], isClosed: isClosed },
+      },
     }));
   };
 
@@ -199,8 +211,8 @@ const AddServiceCenter = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.address) {
-      toast.error('Please fill in all required fields');
+    if (!formData.name || !formData.address || !formData.pincode) {
+      toast.error('Please fill in all required fields, including pincode.');
       return;
     }
 
@@ -209,23 +221,62 @@ const AddServiceCenter = () => {
       return;
     }
 
+    setLoading(true);
+    const toastId = toast.loading('Creating service center...');
+
     try {
-      setLoading(true);
+      const operatingHours = Object.entries(formData.operatingHours).reduce((acc, [day, hours]) => {
+        acc[day] = hours.isClosed ? '00:00 AM - 00:00 PM' : `${hours.open} - ${hours.close}`;
+        return acc;
+      }, {});
 
       const docData = {
         ...formData,
-        rating: parseFloat(formData.rating),
-        reviewCount: parseInt(formData.reviewCount),
+        operatingHours,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, 'ServiceCenters'), docData);
-      toast.success('Service center added successfully!');
+      // Add the service center document
+      const serviceCenterRef = await addDoc(collection(db, 'ServiceCenters'), docData);
+      const serviceCenterID = serviceCenterRef.id;
+
+      // Pincode logic
+      const pincode = parseInt(formData.pincode);
+      if (!isNaN(pincode)) {
+        const rangeStart = Math.floor(pincode / 100) * 100 + 1;
+        const rangeEnd = rangeStart + 99;
+        const docId = `${rangeStart}---${rangeEnd}`;
+        const pincodeDocRef = doc(db, 'Pincode', docId);
+
+        const newCenterData = {
+          serviceCenterID: serviceCenterID,
+          serviceCenterPincode: pincode,
+          serviceCenterName: formData.name,
+          longitude: formData.coordinates.longitude,
+          latitude: formData.coordinates.latitude
+        };
+
+        const docSnap = await getDoc(pincodeDocRef);
+
+        if (docSnap.exists()) {
+          await updateDoc(pincodeDocRef, {
+            availablePincodes: arrayUnion(pincode),
+            availableCenters: arrayUnion(newCenterData)
+          });
+        } else {
+          await setDoc(pincodeDocRef, {
+            availablePincodes: [pincode],
+            availableCenters: [newCenterData]
+          });
+        }
+      }
+
+      toast.success('Service center and pincode data updated successfully!', { id: toastId });
       navigate('/service-centers');
     } catch (error) {
       console.error('Error adding service center:', error);
-      toast.error('Failed to add service center');
+      toast.error('Failed to add service center', { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -438,57 +489,6 @@ const AddServiceCenter = () => {
                   />
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Rating
-                  </label>
-                  <div className="relative">
-                    <FiStar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="number"
-                      name="rating"
-                      value={formData.rating}
-                      onChange={handleInputChange}
-                      min="0"
-                      max="5"
-                      step="0.1"
-                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Review Count
-                  </label>
-                  <input
-                    type="number"
-                    name="reviewCount"
-                    value={formData.reviewCount}
-                    onChange={handleInputChange}
-                    min="0"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Status
-                  </label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 appearance-none cursor-pointer"
-                  >
-                    <option value="Open">Open</option>
-                    <option value="Closed">Closed</option>
-                    <option value="Closing Soon">Closing Soon</option>
-                  </select>
-                </div>
-              </div>
             </div>
 
             {/* Operating Hours Section */}
@@ -504,44 +504,41 @@ const AddServiceCenter = () => {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Monday - Friday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.weekday}
-                    onChange={(e) => handleOperatingHoursChange('weekday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="9:00 AM - 8:00 PM"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Saturday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.saturday}
-                    onChange={(e) => handleOperatingHoursChange('saturday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="9:00 AM - 9:00 PM"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Sunday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.sunday}
-                    onChange={(e) => handleOperatingHoursChange('sunday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="10:00 AM - 7:00 PM"
-                  />
-                </div>
+                {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => {
+                  const isClosed = formData.operatingHours[day].isClosed;
+                  return (
+                    <div key={day} className={`p-4 border rounded-xl transition-all duration-200 ${isClosed ? 'bg-gray-100' : 'bg-white'}`}>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-semibold text-gray-700 capitalize">
+                          {day}
+                        </label>
+                        <div className="flex items-center">
+                          <label htmlFor={`${day}-closed`} className="mr-2 text-sm text-gray-900">Closed</label>
+                          <input
+                            type="checkbox"
+                            id={`${day}-closed`}
+                            checked={isClosed}
+                            onChange={(e) => handleOperatingHoursClose(day, e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                      {!isClosed && (
+                        <div className="flex items-center gap-4 mt-4">
+                          <TimePicker
+                            value={formData.operatingHours[day].open}
+                            onChange={(value) => handleOperatingHoursChange(day, 'open', value)}
+                          />
+                          <span className="text-gray-500">-</span>
+                          <TimePicker
+                            value={formData.operatingHours[day].close}
+                            onChange={(value) => handleOperatingHoursChange(day, 'close', value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 

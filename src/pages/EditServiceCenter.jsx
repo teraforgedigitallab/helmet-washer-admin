@@ -1,34 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import { OpenStreetMapProvider, GeoSearchControl } from 'leaflet-geosearch';
+import 'leaflet-geosearch/dist/geosearch.css';
+
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix for default marker icon
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
+
 import { FiArrowLeft, FiMapPin, FiClock, FiPhone, FiPackage, FiStar, FiCheckCircle, FiNavigation } from 'react-icons/fi';
+import TimePicker from '../components/TimePicker';
 
 const EditServiceCenter = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [map, setMap] = useState(null);
-  const [marker, setMarker] = useState(null);
+  const markerRef = useRef(null);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
-    rating: 4.5,
-    reviewCount: 0,
+    pincode: '',
+    city: '',
+    locality: '',
     distance: '',
-    status: 'Open',
     phone: '',
     coordinates: {
       latitude: 19.0760,
       longitude: 72.8777
     },
     operatingHours: {
-      weekday: '9:00 AM - 8:00 PM',
-      saturday: '9:00 AM - 9:00 PM',
-      sunday: '10:00 AM - 7:00 PM',
+      monday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      tuesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      wednesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      thursday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      friday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+      saturday: { open: '09:00 AM', close: '09:00 PM', isClosed: false },
+      sunday: { open: '10:00 AM', close: '07:00 PM', isClosed: false },
     },
     services: []
   });
@@ -41,55 +62,117 @@ const EditServiceCenter = () => {
     'Maintenance Service'
   ];
 
-  // Load Google Maps API
-  useEffect(() => {
-    if (!window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => setMapLoaded(true);
-      document.head.appendChild(script);
-    } else {
-      setMapLoaded(true);
-    }
-  }, []);
-
   useEffect(() => {
     fetchServiceCenter();
   }, [id]);
 
-  // Initialize map after data is loaded
-  useEffect(() => {
-    if (mapLoaded && !fetching && !map && formData.coordinates) {
-      initializeMap();
-    }
-  }, [mapLoaded, fetching, formData.coordinates]);
+  const LocationMarker = () => {
+    const map = useMapEvents({
+      click(e) {
+        const { lat, lng } = e.latlng;
+        setFormData(prev => ({
+          ...prev,
+          coordinates: { latitude: lat, longitude: lng }
+        }));
+        reverseGeocode(lat, lng);
+      },
+      locationfound(e) {
+        const { lat, lng } = e.latlng;
+        setFormData(prev => ({
+          ...prev,
+          coordinates: { latitude: lat, longitude: lng }
+        }));
+        map.flyTo(e.latlng, 15);
+        reverseGeocode(lat, lng);
+      },
+    });
+
+    useEffect(() => {
+      map.flyTo([formData.coordinates.latitude, formData.coordinates.longitude], 15);
+    }, [formData.coordinates.latitude, formData.coordinates.longitude, map]);
+
+    useEffect(() => {
+      const searchControl = new GeoSearchControl({
+        provider: new OpenStreetMapProvider(),
+        style: 'bar',
+        showMarker: false,
+        showPopup: false,
+        autoClose: true,
+        retainZoomLevel: false,
+        animateZoom: true,
+        keepResult: true,
+      });
+      const mapInstance = map;
+      mapInstance.addControl(searchControl);
+
+      mapInstance.on('geosearch/showlocation', (result) => {
+        const { x, y, label } = result.location;
+        setFormData(prev => ({
+          ...prev,
+          address: label,
+          coordinates: { latitude: y, longitude: x }
+        }));
+        reverseGeocode(y, x);
+      });
+
+      return () => { mapInstance.removeControl(searchControl) }
+    }, [map]);
+
+
+    return formData.coordinates === null ? null : (
+      <Marker
+        position={[formData.coordinates.latitude, formData.coordinates.longitude]}
+        draggable={true}
+        ref={markerRef}
+        eventHandlers={{
+          dragend() {
+            const marker = markerRef.current;
+            if (marker != null) {
+              const { lat, lng } = marker.getLatLng();
+              setFormData(prev => ({
+                ...prev,
+                coordinates: { latitude: lat, longitude: lng }
+              }));
+              reverseGeocode(lat, lng);
+            }
+          },
+        }}
+      />
+    );
+  }
 
   const fetchServiceCenter = async () => {
     try {
       setFetching(true);
       const docRef = doc(db, 'ServiceCenters', id);
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         const data = docSnap.data();
         setFormData({
           name: data.name || '',
           address: data.address || '',
-          rating: data.rating || 4.5,
-          reviewCount: data.reviewCount || 0,
+          pincode: data.pincode || '',
+          city: data.city || '',
+          locality: data.locality || '',
           distance: data.distance || '',
-          status: data.status || 'Open',
           phone: data.phone || '',
           coordinates: data.coordinates || {
             latitude: 19.0760,
             longitude: 72.8777
           },
-          operatingHours: data.operatingHours || {
-            weekday: '9:00 AM - 8:00 PM',
-            saturday: '9:00 AM - 9:00 PM',
-            sunday: '10:00 AM - 7:00 PM',
+          operatingHours: data.operatingHours ? Object.entries(data.operatingHours).reduce((acc, [day, hours]) => {
+            const [open, close] = hours.split(' - ');
+            acc[day] = { open, close, isClosed: hours === '00:00 AM - 00:00 PM' };
+            return acc;
+          }, {}) : {
+            monday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+            tuesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+            wednesday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+            thursday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+            friday: { open: '09:00 AM', close: '08:00 PM', isClosed: false },
+            saturday: { open: '09:00 AM', close: '09:00 PM', isClosed: false },
+            sunday: { open: '10:00 AM', close: '07:00 PM', isClosed: false },
           },
           services: data.services || []
         });
@@ -105,105 +188,16 @@ const EditServiceCenter = () => {
     }
   };
 
-  const initializeMap = () => {
-    const mapInstance = new window.google.maps.Map(document.getElementById('map'), {
-      center: { 
-        lat: formData.coordinates.latitude, 
-        lng: formData.coordinates.longitude 
-      },
-      zoom: 15,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    });
-
-    const markerInstance = new window.google.maps.Marker({
-      position: { 
-        lat: formData.coordinates.latitude, 
-        lng: formData.coordinates.longitude 
-      },
-      map: mapInstance,
-      draggable: true,
-      animation: window.google.maps.Animation.DROP,
-    });
-
-    // Update coordinates when marker is dragged
-    markerInstance.addListener('dragend', (event) => {
-      const lat = event.latLng.lat();
-      const lng = event.latLng.lng();
-      setFormData(prev => ({
-        ...prev,
-        coordinates: {
-          latitude: lat,
-          longitude: lng
-        }
-      }));
-      reverseGeocode(lat, lng);
-    });
-
-    // Click on map to move marker
-    mapInstance.addListener('click', (event) => {
-      const lat = event.latLng.lat();
-      const lng = event.latLng.lng();
-      markerInstance.setPosition({ lat, lng });
-      setFormData(prev => ({
-        ...prev,
-        coordinates: {
-          latitude: lat,
-          longitude: lng
-        }
-      }));
-      reverseGeocode(lat, lng);
-    });
-
-    // Add search box
-    const input = document.getElementById('location-search');
-    if (input) {
-      const searchBox = new window.google.maps.places.SearchBox(input);
-      
-      mapInstance.addListener('bounds_changed', () => {
-        searchBox.setBounds(mapInstance.getBounds());
-      });
-
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
-        if (places.length === 0) return;
-
-        const place = places[0];
-        if (!place.geometry || !place.geometry.location) return;
-
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-
-        mapInstance.setCenter({ lat, lng });
-        mapInstance.setZoom(15);
-        markerInstance.setPosition({ lat, lng });
-
-        setFormData(prev => ({
-          ...prev,
-          address: place.formatted_address || '',
-          coordinates: {
-            latitude: lat,
-            longitude: lng
-          }
-        }));
-      });
-    }
-
-    setMap(mapInstance);
-    setMarker(markerInstance);
-  };
-
   const reverseGeocode = async (lat, lng) => {
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results[0]) {
-        setFormData(prev => ({
-          ...prev,
-          address: results[0].formatted_address
-        }));
-      }
-    });
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+    const data = await response.json();
+    setFormData(prev => ({
+      ...prev,
+      address: data.display_name,
+      pincode: data.address.postcode,
+      city: data.address.city,
+      locality: data.address.suburb
+    }));
   };
 
   const getCurrentLocation = () => {
@@ -212,21 +206,15 @@ const EditServiceCenter = () => {
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          
-          if (map && marker) {
-            map.setCenter({ lat, lng });
-            map.setZoom(15);
-            marker.setPosition({ lat, lng });
-            
-            setFormData(prev => ({
-              ...prev,
-              coordinates: {
-                latitude: lat,
-                longitude: lng
-              }
-            }));
-            reverseGeocode(lat, lng);
-          }
+
+          setFormData(prev => ({
+            ...prev,
+            coordinates: {
+              latitude: lat,
+              longitude: lng
+            }
+          }));
+          reverseGeocode(lat, lng);
         },
         (error) => {
           toast.error('Unable to get your location');
@@ -245,13 +233,23 @@ const EditServiceCenter = () => {
     }));
   };
 
-  const handleOperatingHoursChange = (day, value) => {
+  const handleOperatingHoursChange = (day, part, value) => {
     setFormData(prev => ({
       ...prev,
       operatingHours: {
         ...prev.operatingHours,
-        [day]: value
-      }
+        [day]: { ...prev.operatingHours[day], [part]: value },
+      },
+    }));
+  };
+
+  const handleOperatingHoursClose = (day, isClosed) => {
+    setFormData(prev => ({
+      ...prev,
+      operatingHours: {
+        ...prev.operatingHours,
+        [day]: { ...prev.operatingHours[day], isClosed: isClosed },
+      },
     }));
   };
 
@@ -266,7 +264,7 @@ const EditServiceCenter = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.address) {
       toast.error('Please fill in all required fields');
       return;
@@ -279,11 +277,15 @@ const EditServiceCenter = () => {
 
     try {
       setLoading(true);
-      
+
+      const operatingHours = Object.entries(formData.operatingHours).reduce((acc, [day, hours]) => {
+        acc[day] = hours.isClosed ? '00:00 AM - 00:00 PM' : `${hours.open} - ${hours.close}`;
+        return acc;
+      }, {});
+
       const docData = {
         ...formData,
-        rating: parseFloat(formData.rating),
-        reviewCount: parseInt(formData.reviewCount),
+        operatingHours,
         updatedAt: new Date().toISOString()
       };
 
@@ -298,20 +300,9 @@ const EditServiceCenter = () => {
     }
   };
 
-  if (fetching) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="p-4 sm:p-6 lg:p-8">
-          <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <p className="text-gray-600 font-medium">Loading service center details...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    fetchServiceCenter();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -354,37 +345,21 @@ const EditServiceCenter = () => {
                 </button>
               </div>
 
-              {/* Location Search */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Search Location
-                </label>
-                <div className="relative">
-                  <FiMapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    id="location-search"
-                    type="text"
-                    placeholder="Search for a location..."
-                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                  />
-                </div>
-              </div>
-
               {/* Map Container */}
               <div className="relative">
-                <div 
-                  id="map" 
+                <MapContainer
+                  center={[formData.coordinates.latitude, formData.coordinates.longitude]}
+                  zoom={13}
+                  scrollWheelZoom={false}
                   className="w-full h-96 rounded-xl overflow-hidden border border-gray-200"
-                  style={{ minHeight: '384px' }}
-                ></div>
-                {!mapLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-xl">
-                    <div className="text-center">
-                      <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                      <p className="text-sm text-gray-600">Loading map...</p>
-                    </div>
-                  </div>
-                )}
+                  style={{ minHeight: '384px', zIndex: 1 }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <LocationMarker />
+                </MapContainer>
               </div>
 
               {/* Coordinates Display */}
@@ -453,7 +428,7 @@ const EditServiceCenter = () => {
                   <p className="text-sm text-gray-600">Essential details about the service center</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -503,54 +478,47 @@ const EditServiceCenter = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Rating
-                  </label>
-                  <div className="relative">
-                    <FiStar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="number"
-                      name="rating"
-                      value={formData.rating}
-                      onChange={handleInputChange}
-                      min="0"
-                      max="5"
-                      step="0.1"
-                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Review Count
+                    Pincode
                   </label>
                   <input
-                    type="number"
-                    name="reviewCount"
-                    value={formData.reviewCount}
+                    type="text"
+                    name="pincode"
+                    value={formData.pincode}
                     onChange={handleInputChange}
-                    min="0"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
+                    placeholder="e.g., 560041"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Status
+                    City
                   </label>
-                  <select
-                    name="status"
-                    value={formData.status}
+                  <input
+                    type="text"
+                    name="city"
+                    value={formData.city}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 appearance-none cursor-pointer"
-                  >
-                    <option value="Open">Open</option>
-                    <option value="Closed">Closed</option>
-                    <option value="Closing Soon">Closing Soon</option>
-                  </select>
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
+                    placeholder="e.g., Bangalore"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Locality
+                  </label>
+                  <input
+                    type="text"
+                    name="locality"
+                    value={formData.locality}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
+                    placeholder="e.g., Jayanagar"
+                  />
                 </div>
               </div>
             </div>
@@ -566,46 +534,43 @@ const EditServiceCenter = () => {
                   <p className="text-sm text-gray-600">Set the working hours for each day</p>
                 </div>
               </div>
-              
+
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Monday - Friday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.weekday}
-                    onChange={(e) => handleOperatingHoursChange('weekday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="9:00 AM - 8:00 PM"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Saturday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.saturday}
-                    onChange={(e) => handleOperatingHoursChange('saturday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="9:00 AM - 9:00 PM"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Sunday
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.operatingHours.sunday}
-                    onChange={(e) => handleOperatingHoursChange('sunday', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 placeholder:text-gray-400"
-                    placeholder="10:00 AM - 7:00 PM"
-                  />
-                </div>
+                {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => {
+                  const isClosed = formData.operatingHours[day]?.isClosed;
+                  return (
+                    <div key={day} className={`p-4 border rounded-xl transition-all duration-200 ${isClosed ? 'bg-gray-100' : 'bg-white'}`}>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-semibold text-gray-700 capitalize">
+                          {day}
+                        </label>
+                        <div className="flex items-center">
+                          <label htmlFor={`${day}-closed`} className="mr-2 text-sm text-gray-900">Closed</label>
+                          <input
+                            type="checkbox"
+                            id={`${day}-closed`}
+                            checked={isClosed}
+                            onChange={(e) => handleOperatingHoursClose(day, e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                      {!isClosed && (
+                        <div className="flex items-center gap-4 mt-4">
+                          <TimePicker
+                            value={formData.operatingHours[day]?.open}
+                            onChange={(value) => handleOperatingHoursChange(day, 'open', value)}
+                          />
+                          <span className="text-gray-500">-</span>
+                          <TimePicker
+                            value={formData.operatingHours[day]?.close}
+                            onChange={(value) => handleOperatingHoursChange(day, 'close', value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
@@ -620,16 +585,15 @@ const EditServiceCenter = () => {
                   <p className="text-sm text-gray-600">Select the services offered at this center</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {availableServices.map((service) => (
-                  <label 
-                    key={service} 
-                    className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-                      formData.services.includes(service)
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
+                  <label
+                    key={service}
+                    className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${formData.services.includes(service)
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
                   >
                     <input
                       type="checkbox"

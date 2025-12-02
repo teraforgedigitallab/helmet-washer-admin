@@ -11,6 +11,7 @@ import Users from './pages/Users';
 import Riders from './pages/Riders';
 import Bookings from './pages/Bookings';
 import Ratings from './pages/Ratings';
+import Test from './pages/Test';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -19,12 +20,11 @@ const App = () => {
     <Router>
       <div className="flex h-screen bg-gray-50 overflow-hidden">
         <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
-          sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
-        }`}>
+
+        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
+          }`}>
           <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-          
+
           <main className="flex-1 overflow-auto bg-gray-50">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -36,11 +36,12 @@ const App = () => {
               <Route path="/riders" element={<Riders />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/ratings" element={<Ratings />} />
+              <Route path="/test" element={<Test />} />
             </Routes>
           </main>
         </div>
-        
-        <Toaster 
+
+        <Toaster
           position="top-right"
           toastOptions={{
             duration: 4000,

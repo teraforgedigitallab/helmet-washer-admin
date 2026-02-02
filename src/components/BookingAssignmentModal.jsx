@@ -146,8 +146,13 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         ...(isDoorstep && { otp })
       };
 
+      // Determine the rider ID field name for Rider App queries
+      const riderIdField = assignmentType === 'pickup' ? 'pickupRiderID' : 'deliveryRiderID';
+
       const updateData = {
         [riderField]: riderData,
+        [riderIdField]: selectedRider.id,
+        isAvailableforPickup: false,
         tracking: {
           ...booking.tracking,
           currentStage: nextStage,

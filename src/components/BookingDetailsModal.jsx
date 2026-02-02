@@ -484,6 +484,11 @@ const BookingDetailsModal = ({ booking: initialBooking, isOpen, onClose, onSucce
         updatedAt: now
       };
 
+      // Set isAvailableforPickup when ready for delivery (return trip)
+      if (targetStage === 'ready_for_delivery') {
+        updateData.isAvailableforPickup = true;
+      }
+
       await updateDoc(doc(db, 'Bookings', booking.id), updateData);
 
       toast.success('Stage updated successfully!');

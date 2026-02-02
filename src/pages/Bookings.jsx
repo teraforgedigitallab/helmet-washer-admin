@@ -167,7 +167,7 @@ const Bookings = () => {
         const matchesDeliveryType = deliveryTypeFilter === 'all' || booking.deliveryType === deliveryTypeFilter;
 
         return matchesSearch && matchesStatus && matchesServiceType && matchesDeliveryType;
-    }).sort((a, b) => {
+        }).sort((a, b) => {
         switch (sortBy) {
             case 'createdAt':
                 return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);

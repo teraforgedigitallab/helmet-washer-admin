@@ -167,7 +167,7 @@ const Bookings = () => {
         const matchesDeliveryType = deliveryTypeFilter === 'all' || booking.deliveryType === deliveryTypeFilter;
 
         return matchesSearch && matchesStatus && matchesServiceType && matchesDeliveryType;
-        }).sort((a, b) => {
+    }).sort((a, b) => {
         switch (sortBy) {
             case 'createdAt':
                 return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
@@ -254,7 +254,7 @@ const Bookings = () => {
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-            <div className="container mx-auto px-4 py-8">
+            {/* <div className="container mx-auto px-4 py-8">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <h1 className="text-2xl font-bold text-gray-800">Bookings</h1>
                     <button
@@ -284,7 +284,7 @@ const Bookings = () => {
                         {bookings.length} total bookings
                     </p>
                 </div>
-            </div>
+            </div> */}
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

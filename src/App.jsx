@@ -12,6 +12,7 @@ import Riders from './pages/Riders';
 import Bookings from './pages/Bookings';
 import Ratings from './pages/Ratings';
 import Test from './pages/Test';
+import BookingAllotmentLogic from './pages/BookingAllotmentLogic';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -36,6 +37,7 @@ const App = () => {
               <Route path="/riders" element={<Riders />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/ratings" element={<Ratings />} />
+              <Route path="/booking-allotment-logic" element={<BookingAllotmentLogic />} />
               <Route path="/test" element={<Test />} />
             </Routes>
           </main>

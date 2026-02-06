@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
 import {
@@ -81,6 +81,18 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
       setLoading(true);
       const now = Timestamp.now();
 
+      // Fetch global same rider setting
+      let isGlobalSameRiderEnabled = false;
+      try {
+        const settingsDocRef = doc(db, 'AdminSettings', 'allotmentConfig');
+        const settingsDocSnap = await getDoc(settingsDocRef);
+        if (settingsDocSnap.exists()) {
+          isGlobalSameRiderEnabled = settingsDocSnap.data().sameRiderForPickupAndDelivery || false;
+        }
+      } catch (error) {
+        console.error('Error fetching global setting:', error);
+      }
+
       // Determine which rider field to update and next stage
       const riderField = assignmentType === 'pickup' ? 'pickupRider' : 'deliveryRider';
       const nextStage = assignmentType === 'pickup' ? 'out_for_pickup' : 'out_for_delivery';
@@ -90,6 +102,7 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
       const otp = isDoorstep ? Math.floor(1000 + Math.random() * 9000).toString() : null;
 
       console.log('Assigning rider:', assignmentType, 'Next stage:', nextStage);
+      console.log('Global Same Rider Setting:', isGlobalSameRiderEnabled);
 
       // Find the index of current stage (pickup_scheduled or ready_for_delivery)
       const currentStageIndex = booking.tracking.stages.findIndex(
@@ -161,6 +174,11 @@ const BookingAssignmentModal = ({ booking, isOpen, onClose, onSuccess }) => {
         status: newStatus,
         updatedAt: now
       };
+
+      // Set isSameRiderForPickupAndDelivery flag when assigning pickup rider
+      if (assignmentType === 'pickup') {
+        updateData.isSameRiderForPickupAndDelivery = isGlobalSameRiderEnabled;
+      }
 
       console.log('Updating booking with:', updateData);
 

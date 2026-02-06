@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc, Timestamp, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, getDoc, onSnapshot, addDoc, collection } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
 import {
@@ -444,6 +444,87 @@ const BookingDetailsModal = ({ booking: initialBooking, isOpen, onClose, onSucce
       setLoading(true);
       const now = Timestamp.now();
 
+      // Check if we need to auto-assign delivery rider
+      // This happens when transitioning to ready_for_delivery and isSameRiderForPickupAndDelivery is true
+      if (targetStage === 'ready_for_delivery' && booking.isSameRiderForPickupAndDelivery === true && booking.pickupRider) {
+        console.log('Auto-assigning delivery rider (same as pickup):', booking.pickupRider.riderName);
+        
+        // Find the indices for quality_assurance (current) and out_for_delivery (target after auto-assign)
+        const currentStageIndex = booking.tracking.stages.findIndex(
+          s => s.stage === booking.tracking.currentStage
+        );
+        
+        const readyForDeliveryIndex = booking.tracking.stages.findIndex(
+          s => s.stage === 'ready_for_delivery'
+        );
+        
+        const outForDeliveryIndex = booking.tracking.stages.findIndex(
+          s => s.stage === 'out_for_delivery'
+        );
+
+        // Update stages - complete quality_assurance and ready_for_delivery, start out_for_delivery
+        const updatedStages = booking.tracking.stages.map((stage, index) => {
+          if (index === currentStageIndex) {
+            return { ...stage, status: 'completed', completedAt: now };
+          }
+          if (index === readyForDeliveryIndex) {
+            return { ...stage, status: 'completed', completedAt: now };
+          }
+          if (index === outForDeliveryIndex) {
+            return { ...stage, status: 'in_progress', startedAt: now };
+          }
+          return stage;
+        });
+
+        // Generate OTP for delivery
+        const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
+        // Create delivery rider data from pickup rider
+        const deliveryRiderData = {
+          riderId: booking.pickupRider.riderId,
+          riderName: booking.pickupRider.riderName,
+          riderPhone: booking.pickupRider.riderPhone,
+          assignedAt: now,
+          assignedBy: 'auto',
+          otp: deliveryOtp
+        };
+
+        const updateData = {
+          tracking: {
+            ...booking.tracking,
+            currentStage: 'out_for_delivery', // Jump directly to out_for_delivery
+            stages: updatedStages
+          },
+          status: 'assigned_for_delivery',
+          deliveryRider: deliveryRiderData,
+          deliveryRiderID: booking.pickupRider.riderId,
+          isAvailableforPickup: false, // Not available for other riders
+          updatedAt: now
+        };
+
+        await updateDoc(doc(db, 'Bookings', booking.id), updateData);
+
+        // Create rider assignment record for delivery
+        await addDoc(collection(db, 'RiderAssignments'), {
+          bookingId: booking.id,
+          bookingNumber: booking.bookingNumber,
+          riderId: booking.pickupRider.riderId,
+          riderName: booking.pickupRider.riderName,
+          assignmentType: 'delivery',
+          customerName: `${booking.customerDetails?.firstName || ''} ${booking.customerDetails?.lastName || ''}`.trim(),
+          customerAddress: booking.addressDetails?.fullAddress,
+          assignedAt: now,
+          assignedBy: 'auto',
+          status: 'active',
+          otp: deliveryOtp
+        });
+
+        toast.success(`Delivery automatically assigned to ${booking.pickupRider.riderName}!`);
+        onSuccess && onSuccess();
+        return;
+      }
+
+      // Normal flow (no auto-assignment)
       const currentStageIndex = booking.tracking.stages.findIndex(
         s => s.stage === booking.tracking.currentStage
       );

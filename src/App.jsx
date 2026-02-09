@@ -11,6 +11,7 @@ import Users from './pages/Users';
 import Riders from './pages/Riders';
 import Bookings from './pages/Bookings';
 import Ratings from './pages/Ratings';
+import Coupons from './pages/Coupons';
 import Test from './pages/Test';
 import BookingAllotmentLogic from './pages/BookingAllotmentLogic';
 
@@ -37,6 +38,7 @@ const App = () => {
               <Route path="/riders" element={<Riders />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/ratings" element={<Ratings />} />
+              <Route path="/coupons" element={<Coupons />} />
               <Route path="/booking-allotment-logic" element={<BookingAllotmentLogic />} />
               <Route path="/test" element={<Test />} />
             </Routes>
